@@ -229,9 +229,150 @@
         .call-btn.end:hover {
             background: #e64a19;
         }
+
+        .permission-guide {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .permission-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 500px;
+            text-align: center;
+            animation: slideUp 0.4s;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .permission-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .permission-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .permission-text {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .permission-steps {
+            text-align: left;
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .permission-step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .permission-step:last-child {
+            margin-bottom: 0;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .permission-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .permission-button:hover {
+            transform: scale(1.05);
+        }
+
+        .permission-button:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
+    <!-- Permission Guide Overlay -->
+    <div id="permissionGuide" class="permission-guide">
+        <div class="permission-content">
+            <div class="permission-icon">🔓</div>
+            <div class="permission-title">Permission Required</div>
+            <div class="permission-text">
+                To complete check-in, please allow the following permissions:
+            </div>
+            <div class="permission-steps">
+                <div class="permission-step">
+                    <div class="step-number">1</div>
+                    <div>📍 <strong>Location</strong> - To verify your visit location</div>
+                </div>
+                <div class="permission-step">
+                    <div class="step-number">2</div>
+                    <div>📹 <strong>Camera</strong> - For video verification (when admin calls)</div>
+                </div>
+                <div class="permission-step">
+                    <div class="step-number">3</div>
+                    <div>🎤 <strong>Microphone</strong> - For audio communication</div>
+                </div>
+            </div>
+            <div class="permission-text" style="font-size: 14px; color: #999; margin-top: 15px;">
+                <strong>Tip:</strong> Click "Allow" or "Allow while visiting" when browser asks
+            </div>
+            <button class="permission-button" onclick="closeGuideAndStart()">
+                ✅ I Understand, Continue
+            </button>
+        </div>
+    </div>
     <!-- Call ringtone audio -->
     <audio id="ringtone" loop>
         <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBgoKDhISFhYWGh4eIiImJiouLjIyNjY6Oj5CQkZGSk5OUlJWVlpeXmJiZmZqbm5ycnZ2en5+goKGho6OkpKWlpqanp6ioqampqqusrK2trq6vr7CwsbGys7O0tLW1tre3uLi5ubq7u7y8vb2+vr/AwMHBwsPDxMTFxcbGx8fIyMnJysrLy8zMzc3Ozs/P0NDR0dLT09TU1dXW1tfX2NjZ2dra29vc3N3d3t7f3+Dg4eHi4+Pk5OXl5ubm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+//8AAQIDAwQEBQUGBgcHCAgJCQoKCwsMDA0NDg4PDxAQERESExMUFBUVFhYXFxgYGRkaGhsbHBwdHR4eHx8gICEhIiIjIyQkJSUmJicnKCgpKSoqKyssLC0tLi4vLzAwMTEyMjMzNDQ1NTY2Nzc4ODk5Ojo7Ozw8PT0+Pj8/QEBBQUJCQkNERERFRUZGR0dISElJSkpLS0xMTU1OTk9PUFBR=" type="audio/wav">
@@ -279,64 +420,35 @@
         </p>
     </div>
 
-    <!-- Permission Helper Script -->
+    <!-- Debug Logger Script -->
     <script>
         (function() {
             'use strict';
+            console.log('🔐 Visitor page loaded - Ready for permissions');
+            console.log('ℹ️ Browser will show native permission dialogs');
 
-            console.log('🔐 Permission Helper loaded');
+            // Show permission guide on load
+            window.addEventListener('load', () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const qrCodeId = urlParams.get('qr');
 
-            // Pre-request permissions on page load to prompt user early
-            window.addEventListener('load', async () => {
-                try {
-                    console.log('📍 Requesting location permission...');
-                    // This will trigger the location permission prompt
-                    if ('geolocation' in navigator) {
-                        // Permission is requested in captureAndSendLocation()
-                    }
-                } catch (error) {
-                    console.log('Permission pre-request failed:', error);
+                if (qrCodeId) {
+                    // Show permission guide before starting
+                    document.getElementById('permissionGuide').style.display = 'flex';
                 }
             });
-
-            // Helper to auto-click allow buttons if they appear
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1) {
-                            // Look for permission dialog buttons
-                            const buttons = node.querySelectorAll?.(
-                                'button, input[type="button"], [role="button"]'
-                            );
-
-                            buttons?.forEach((btn) => {
-                                const text = btn.textContent?.toLowerCase() || '';
-                                const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
-
-                                if (text.includes('allow') || text.includes('grant') ||
-                                    ariaLabel.includes('allow') || ariaLabel.includes('grant')) {
-                                    console.log('🔓 Auto-clicking permission button');
-                                    setTimeout(() => {
-                                        try {
-                                            btn.click();
-                                        } catch (e) {
-                                            console.log('Click failed:', e);
-                                        }
-                                    }, 100);
-                                }
-                            });
-                        }
-                    });
-                });
-            });
-
-            observer.observe(document.documentElement, {
-                childList: true,
-                subtree: true
-            });
-
-            console.log('✅ Permission helper active');
         })();
+
+        // Function to close guide and start process
+        function closeGuideAndStart() {
+            console.log('✅ User acknowledged permission requirements');
+            document.getElementById('permissionGuide').style.display = 'none';
+
+            // Trigger the location capture
+            if (window.startCheckIn) {
+                window.startCheckIn();
+            }
+        }
     </script>
 
     <!-- Firebase SDK -->
@@ -373,8 +485,14 @@
         if (!qrCodeId) {
             showError('Invalid QR code. Please scan again.');
         } else {
-            captureAndSendLocation();
+            // Don't start automatically - wait for user to acknowledge permissions
+            console.log('✅ QR Code detected, waiting for user to start...');
         }
+
+        // Global function to start check-in process
+        window.startCheckIn = function() {
+            captureAndSendLocation();
+        };
 
         async function captureAndSendLocation() {
             try {
