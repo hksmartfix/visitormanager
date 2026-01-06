@@ -162,23 +162,23 @@
             width: 100%;
         }
 
+        /* Hide remote video - visitor only sees their own face */
         #remoteVideo {
+            display: none;
+            width: 0;
+            height: 0;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        /* Show only local video (visitor's own face) - full size */
+        #localVideo {
             width: 100%;
             height: auto;
             display: block;
-            background: #000;
             border-radius: 10px;
-        }
-
-        #localVideo {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            width: 120px;
-            height: auto;
-            border: 2px solid white;
-            border-radius: 8px;
             background: #000;
+        }
             z-index: 10;
         }
 
@@ -790,7 +790,7 @@
                         status: 'active'
                     });
 
-                    statusEl.innerHTML = '✅ Call connected! You can see and hear each other.';
+                    statusEl.innerHTML = '✅ Connected! Admin can see you. You can hear admin.';
                     statusEl.className = 'status success';
                     console.log('✅ Call successfully connected!');
                 } else {
@@ -854,20 +854,22 @@
             });
 
             // Handle remote tracks (admin video/audio)
+            // Note: Remote video is hidden (CSS), visitor only sees their own face
+            // But remote audio still works so admin's voice is heard
             peerConnection.ontrack = (event) => {
                 console.log(`📥 Remote ${event.track.kind} track received`);
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (!remoteVideo.srcObject) {
                     remoteVideo.srcObject = new MediaStream();
-                    console.log('📺 Created new MediaStream for remote video');
+                    console.log('📺 Created new MediaStream for remote (hidden) video');
                 }
                 remoteVideo.srcObject.addTrack(event.track);
-                console.log('✅ Remote track added to video element');
+                console.log('✅ Remote track added (video hidden, audio plays)');
 
-                // Ensure remote audio is enabled
+                // Ensure remote audio is enabled - visitor can hear admin
                 if (event.track.kind === 'audio') {
                     remoteVideo.muted = false;
-                    console.log('🔊 Remote audio unmuted');
+                    console.log('🔊 Remote audio unmuted - visitor can hear admin');
                     setupAudioDetection(remoteVideo);
                 }
             };
@@ -913,7 +915,7 @@
 
                 switch (peerConnection.connectionState) {
                     case 'connected':
-                        statusEl.innerHTML = '✅ Call connected! You can see and hear each other.';
+                        statusEl.innerHTML = '✅ Call connected! Admin can see you, and you can hear admin.';
                         statusEl.className = 'status success';
                         console.log('🎉 WebRTC connection established successfully!');
                         break;
