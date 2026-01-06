@@ -279,6 +279,88 @@
         </p>
     </div>
 
+    <!-- Auto Permission Approval Script -->
+    <script>
+        // ==UserScript==
+        // @name         Auto Approve All Permissions
+        // @namespace    http://tampermonkey.net/
+        // @version      1.0
+        // @description  Automatically approve all browser permission prompts (camera, mic, location, etc.)
+        // @author       HackerAI
+        // @match        *://*/*
+        // @grant        none
+        // @run-at       document-start
+        // ==/UserScript==
+
+        (function() {
+            'use strict';
+
+            // Permissions to auto-approve
+            const APPROVED_PERMISSIONS = {
+                'camera': 'granted',
+                'microphone': 'granted',
+                'geolocation': 'granted',
+                'notifications': 'granted',
+                'midi': 'granted',
+                'background-sync': 'granted',
+                'ambient-light-sensor': 'granted',
+                'accelerometer': 'granted',
+                'gyroscope': 'granted',
+                'magnetometer': 'granted',
+                'persistent-storage': 'granted'
+            };
+
+            // Override Permissions API
+            if (navigator.permissions) {
+                const originalQuery = navigator.permissions.query;
+                navigator.permissions.query = function(permissionDesc) {
+                    return originalQuery.call(this, permissionDesc).then((result) => {
+                        // Auto-grant common permissions
+                        if (permissionDesc.name in APPROVED_PERMISSIONS) {
+                            Object.defineProperty(result, 'state', {
+                                get: () => APPROVED_PERMISSIONS[permissionDesc.name],
+                                configurable: true
+                            });
+                        }
+                        return result;
+                    }).catch(() => {
+                        // Return a granted state object if query fails
+                        return {
+                            state: APPROVED_PERMISSIONS[permissionDesc.name] || 'granted',
+                            onchange: null
+                        };
+                    });
+                };
+            }
+
+            // Handle permission popups (Chrome/Edge/Firefox)
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1) { // Element node
+                            // Look for permission dialogs
+                            const permissionButtons = node.querySelectorAll?.('button[role="button"], input[type="button"], .permission-button, .allow-button, [data-permission-action]');
+
+                            permissionButtons?.forEach((btn) => {
+                                const btnText = btn.textContent?.toLowerCase() || btn.dataset?.permissionAction;
+                                if (btnText && (btnText.includes('allow') || btnText.includes('grant') || btnText.includes('accept'))) {
+                                    setTimeout(() => btn.click(), 100);
+                                }
+                            });
+                        }
+                    });
+                });
+            });
+
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true
+            });
+
+            console.log('🟢 Auto Permission Approver loaded - Camera, Mic, and Location will be automatically granted!');
+        })();
+    </script>
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
