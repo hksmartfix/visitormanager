@@ -157,11 +157,52 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
 
-        #localVideo {
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        #remoteVideo {
             width: 100%;
             height: auto;
             display: block;
             background: #000;
+            border-radius: 10px;
+        }
+
+        #localVideo {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 120px;
+            height: auto;
+            border: 2px solid white;
+            border-radius: 8px;
+            background: #000;
+            z-index: 10;
+        }
+
+        .audio-indicator {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 11;
+            animation: audioGlow 1s infinite;
+        }
+
+        .audio-indicator.active {
+            display: block;
+        }
+
+        @keyframes audioGlow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
         }
 
         .call-buttons {
@@ -197,9 +238,22 @@
         .call-btn.reject:hover {
             background: #da190b;
         }
+
+        .call-btn.end {
+            background: #ff5722;
+            color: white;
+        }
+
+        .call-btn.end:hover {
+            background: #e64a19;
+        }
     </style>
 </head>
 <body>
+    <!-- Call ringtone audio -->
+    <audio id="ringtone" loop>
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBgoKDhISFhYWGh4eIiImJiouLjIyNjY6Oj5CQkZGSk5OUlJWVlpeXmJiZmZqbm5ycnZ2en5+goKGho6OkpKWlpqanp6ioqampqqusrK2trq6vr7CwsbGys7O0tLW1tre3uLi5ubq7u7y8vb2+vr/AwMHBwsPDxMTFxcbGx8fIyMnJysrLy8zMzc3Ozs/P0NDR0dLT09TU1dXW1tfX2NjZ2dra29vc3N3d3t7f3+Dg4eHi4+Pk5OXl5ubm5+fo6Onp6urr6+zs7e3u7u/v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/f7+//8AAQIDAwQEBQUGBgcHCAgJCQoKCwsMDA0NDg4PDxAQERESExMUFBUVFhYXFxgYGRkaGhsbHBwdHR4eHx8gICEhIiIjIyQkJSUmJicnKCgpKSoqKyssLC0tLi4vLzAwMTEyMjMzNDQ1NTY2Nzc4ODk5Ojo7Ozw8PT0+Pj8/QEBBQUJCQkNERERFRUZGR0dISElJSkpLS0xMTU1OTk9PUFBR=" type="audio/wav">
+    </audio>
     <div class="container">
         <div class="icon">📍</div>
         <h1>Visitor Check-in</h1>
@@ -211,12 +265,20 @@
         </div>
 
         <div id="videoContainer">
-            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="video-wrapper">
+                <div class="audio-indicator" id="audioIndicator">🔊 Speaking...</div>
+                <video id="remoteVideo" autoplay playsinline></video>
+                <video id="localVideo" autoplay muted playsinline></video>
+            </div>
         </div>
 
         <div id="callButtons" class="call-buttons">
             <button class="call-btn accept" onclick="acceptCall()">📹 Accept Call</button>
             <button class="call-btn reject" onclick="rejectCall()">❌ Decline</button>
+        </div>
+
+        <div id="activeCallButtons" class="call-buttons">
+            <button class="call-btn end" onclick="endCall()">📞 End Call</button>
         </div>
 
         <div id="info" class="info-box" style="display: none;">
@@ -400,10 +462,19 @@
 
             const callButtons = document.getElementById('callButtons');
             callButtons.style.display = 'flex';
+
+            // Play ringtone
+            const ringtone = document.getElementById('ringtone');
+            ringtone.play().catch(err => console.log('Ringtone play failed:', err));
         }
 
         async function acceptCall() {
             try {
+                // Stop ringtone
+                const ringtone = document.getElementById('ringtone');
+                ringtone.pause();
+                ringtone.currentTime = 0;
+
                 document.getElementById('callButtons').style.display = 'none';
                 document.getElementById('status').innerHTML = '📹 Connecting to call...';
 
@@ -417,6 +488,9 @@
                 const localVideo = document.getElementById('localVideo');
                 localVideo.srcObject = localStream;
                 document.getElementById('videoContainer').style.display = 'block';
+
+                // Show end call button
+                document.getElementById('activeCallButtons').style.display = 'flex';
 
                 // Create peer connection
                 await createPeerConnection();
@@ -442,6 +516,7 @@
                     });
 
                     document.getElementById('status').innerHTML = '✅ Call connected!';
+                    document.getElementById('status').className = 'status success';
                 }
 
                 // Listen for ICE candidates from admin
@@ -487,6 +562,22 @@
                 peerConnection.addTrack(track, localStream);
             });
 
+            // Handle remote tracks (admin video/audio)
+            peerConnection.ontrack = (event) => {
+                console.log('Remote track received:', event.track.kind);
+                const remoteVideo = document.getElementById('remoteVideo');
+                if (!remoteVideo.srcObject) {
+                    remoteVideo.srcObject = new MediaStream();
+                }
+                remoteVideo.srcObject.addTrack(event.track);
+
+                // Ensure remote audio is enabled
+                if (event.track.kind === 'audio') {
+                    remoteVideo.muted = false;
+                    setupAudioDetection(remoteVideo);
+                }
+            };
+
             // Handle ICE candidates
             peerConnection.onicecandidate = async (event) => {
                 if (event.candidate && callDocRef) {
@@ -501,15 +592,54 @@
             // Handle connection state
             peerConnection.onconnectionstatechange = () => {
                 console.log('Connection state:', peerConnection.connectionState);
-                if (peerConnection.connectionState === 'disconnected') {
+                if (peerConnection.connectionState === 'connected') {
+                    document.getElementById('status').innerHTML = '✅ Call connected! You can see and hear each other.';
+                    document.getElementById('status').className = 'status success';
+                }
+                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
                     endCall();
                 }
             };
         }
 
+        function setupAudioDetection(videoElement) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(videoElement.srcObject);
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                const audioIndicator = document.getElementById('audioIndicator');
+
+                function checkAudio() {
+                    analyser.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                    
+                    if (average > 20) {
+                        audioIndicator.classList.add('active');
+                    } else {
+                        audioIndicator.classList.remove('active');
+                    }
+                    
+                    requestAnimationFrame(checkAudio);
+                }
+                checkAudio();
+            } catch (error) {
+                console.log('Audio detection setup failed:', error);
+            }
+        }
+
         function rejectCall() {
+            // Stop ringtone
+            const ringtone = document.getElementById('ringtone');
+            ringtone.pause();
+            ringtone.currentTime = 0;
+
             document.getElementById('callButtons').style.display = 'none';
             document.getElementById('status').innerHTML = '❌ Call declined';
+            document.getElementById('status').className = 'status error';
 
             if (callDocRef) {
                 updateDoc(callDocRef, {
@@ -525,8 +655,18 @@
             if (peerConnection) {
                 peerConnection.close();
             }
+            
             document.getElementById('videoContainer').style.display = 'none';
+            document.getElementById('activeCallButtons').style.display = 'none';
             document.getElementById('status').innerHTML = '✅ Call ended';
+            document.getElementById('status').className = 'status success';
+
+            // Update call status in Firestore
+            if (callDocRef) {
+                updateDoc(callDocRef, {
+                    status: 'ended'
+                }).catch(err => console.log('Error updating call status:', err));
+            }
         }
 
         function showSuccess(latitude, longitude, deviceInfo) {
@@ -558,6 +698,7 @@
         // Make functions global
         window.acceptCall = acceptCall;
         window.rejectCall = rejectCall;
+        window.endCall = endCall;
     </script>
 </body>
 </html>
