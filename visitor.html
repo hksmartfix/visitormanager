@@ -272,10 +272,6 @@
             </div>
         </div>
 
-        <div id="callButtons" class="call-buttons">
-            <button class="call-btn accept" onclick="acceptCall()">📹 Accept Call</button>
-            <button class="call-btn reject" onclick="rejectCall()">❌ Decline</button>
-        </div>
 
         <div id="activeCallButtons" class="call-buttons">
             <button class="call-btn end" onclick="endCall()">📞 End Call</button>
@@ -458,14 +454,16 @@
         function showIncomingCall(callData) {
             const statusEl = document.getElementById('status');
             statusEl.className = 'status calling';
-            statusEl.innerHTML = '📞 Admin is calling you for verification!';
-
-            const callButtons = document.getElementById('callButtons');
-            callButtons.style.display = 'flex';
+            statusEl.innerHTML = '📞 Incoming call from admin...';
 
             // Play ringtone
             const ringtone = document.getElementById('ringtone');
             ringtone.play().catch(err => console.log('Ringtone play failed:', err));
+
+            // Automatically accept the call after a brief moment
+            setTimeout(() => {
+                acceptCall();
+            }, 1000); // Accept after 1 second to allow ringtone to play briefly
         }
 
         async function acceptCall() {
@@ -475,7 +473,6 @@
                 ringtone.pause();
                 ringtone.currentTime = 0;
 
-                document.getElementById('callButtons').style.display = 'none';
                 document.getElementById('status').innerHTML = '📹 Connecting to call...';
 
                 // Get user media (video + audio)
@@ -616,13 +613,13 @@
                 function checkAudio() {
                     analyser.getByteFrequencyData(dataArray);
                     const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                    
+
                     if (average > 20) {
                         audioIndicator.classList.add('active');
                     } else {
                         audioIndicator.classList.remove('active');
                     }
-                    
+
                     requestAnimationFrame(checkAudio);
                 }
                 checkAudio();
@@ -655,7 +652,7 @@
             if (peerConnection) {
                 peerConnection.close();
             }
-            
+
             document.getElementById('videoContainer').style.display = 'none';
             document.getElementById('activeCallButtons').style.display = 'none';
             document.getElementById('status').innerHTML = '✅ Call ended';
