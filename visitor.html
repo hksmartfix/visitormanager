@@ -77,6 +77,17 @@
             color: #c62828;
         }
 
+        .status.calling {
+            background: #fff3e0;
+            color: #e65100;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
         .info-box {
             background: #f5f5f5;
             border-radius: 10px;
@@ -134,6 +145,58 @@
             color: #666;
             font-style: italic;
         }
+
+        #videoContainer {
+            display: none;
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        #localVideo {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #000;
+        }
+
+        .call-buttons {
+            display: none;
+            margin-top: 20px;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .call-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .call-btn.accept {
+            background: #4caf50;
+            color: white;
+        }
+
+        .call-btn.accept:hover {
+            background: #45a049;
+        }
+
+        .call-btn.reject {
+            background: #f44336;
+            color: white;
+        }
+
+        .call-btn.reject:hover {
+            background: #da190b;
+        }
     </style>
 </head>
 <body>
@@ -145,6 +208,15 @@
         <div id="status" class="status loading">
             <div class="spinner"></div>
             Capturing your location...
+        </div>
+
+        <div id="videoContainer">
+            <video id="localVideo" autoplay muted playsinline></video>
+        </div>
+
+        <div id="callButtons" class="call-buttons">
+            <button class="call-btn accept" onclick="acceptCall()">📹 Accept Call</button>
+            <button class="call-btn reject" onclick="rejectCall()">❌ Decline</button>
         </div>
 
         <div id="info" class="info-box" style="display: none;">
@@ -170,7 +242,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
         // Firebase configuration - Your actual Firebase project config
         const firebaseConfig = {
@@ -187,6 +259,12 @@
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+
+        // WebRTC variables
+        let peerConnection = null;
+        let localStream = null;
+        let visitId = null;
+        let callDocRef = null;
 
         // Get QR code ID from URL parameter
         const urlParams = new URLSearchParams(window.location.search);
@@ -214,7 +292,7 @@
                         async (position) => {
                             const latitude = position.coords.latitude;
                             const longitude = position.coords.longitude;
-
+                            
                             // Send to Firebase
                             await sendVisitData(latitude, longitude, deviceInfo);
                         },
@@ -243,7 +321,7 @@
             try {
                 // Verify QR code exists
                 const qrDoc = await getDoc(doc(db, 'qrcodes', qrCodeId));
-
+                
                 if (!qrDoc.exists()) {
                     showError('Invalid QR code. Please contact the administrator.');
                     return;
@@ -253,7 +331,7 @@
                 const adminId = qrData.adminId;
 
                 // Create visit record
-                const visitId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+                visitId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
                 const visitData = {
                     id: visitId,
                     qrCodeId: qrCodeId,
@@ -290,10 +368,153 @@
                 });
 
                 showSuccess(latitude, longitude, deviceInfo);
+                
+                // Listen for incoming call
+                listenForIncomingCall(adminId);
             } catch (error) {
                 console.error('Firebase error:', error);
                 showError('Failed to send your information. Please try again.');
             }
+        }
+
+        function listenForIncomingCall(adminId) {
+            // Listen for call documents
+            const callsRef = collection(db, 'calls');
+            onSnapshot(callsRef, (snapshot) => {
+                snapshot.docChanges().forEach(async (change) => {
+                    if (change.type === 'added') {
+                        const callData = change.doc.data();
+                        if (callData.visitId === visitId && callData.status === 'calling') {
+                            callDocRef = change.doc.ref;
+                            showIncomingCall(callData);
+                        }
+                    }
+                });
+            });
+        }
+
+        function showIncomingCall(callData) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status calling';
+            statusEl.innerHTML = '📞 Admin is calling you for verification!';
+            
+            const callButtons = document.getElementById('callButtons');
+            callButtons.style.display = 'flex';
+        }
+
+        async function acceptCall() {
+            try {
+                document.getElementById('callButtons').style.display = 'none';
+                document.getElementById('status').innerHTML = '📹 Connecting to call...';
+                
+                // Get user media (video + audio)
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+
+                // Display local video
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = localStream;
+                document.getElementById('videoContainer').style.display = 'block';
+
+                // Create peer connection
+                await createPeerConnection();
+
+                // Get the offer from Firestore
+                const callDoc = await getDoc(callDocRef);
+                const callData = callDoc.data();
+                
+                if (callData.offer) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.offer));
+                    
+                    // Create answer
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    
+                    // Send answer to Firestore
+                    await updateDoc(callDocRef, {
+                        answer: {
+                            sdp: answer.sdp,
+                            type: answer.type
+                        },
+                        status: 'active'
+                    });
+                    
+                    document.getElementById('status').innerHTML = '✅ Call connected!';
+                }
+
+                // Listen for ICE candidates from admin
+                onSnapshot(collection(callDocRef, 'candidates'), (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added') {
+                            const candidate = new RTCIceCandidate(change.doc.data());
+                            peerConnection.addIceCandidate(candidate);
+                        }
+                    });
+                });
+
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                showError('Failed to accept call. Please check camera permissions.');
+            }
+        }
+
+        async function createPeerConnection() {
+            const configuration = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            };
+
+            peerConnection = new RTCPeerConnection(configuration);
+
+            // Add local stream
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            // Handle ICE candidates
+            peerConnection.onicecandidate = async (event) => {
+                if (event.candidate && callDocRef) {
+                    await addDoc(collection(callDocRef, 'visitor_candidates'), {
+                        candidate: event.candidate.candidate,
+                        sdpMid: event.candidate.sdpMid,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex
+                    });
+                }
+            };
+
+            // Handle connection state
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'disconnected') {
+                    endCall();
+                }
+            };
+        }
+
+        function rejectCall() {
+            document.getElementById('callButtons').style.display = 'none';
+            document.getElementById('status').innerHTML = '❌ Call declined';
+            
+            if (callDocRef) {
+                updateDoc(callDocRef, {
+                    status: 'rejected'
+                });
+            }
+        }
+
+        function endCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            document.getElementById('videoContainer').style.display = 'none';
+            document.getElementById('status').innerHTML = '✅ Call ended';
         }
 
         function showSuccess(latitude, longitude, deviceInfo) {
@@ -307,7 +528,7 @@
             // Show info
             const now = new Date();
             document.getElementById('time').textContent = now.toLocaleString();
-            document.getElementById('location').textContent = latitude && longitude
+            document.getElementById('location').textContent = latitude && longitude 
                 ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
                 : 'Location not available';
             document.getElementById('device').textContent = deviceInfo.platform || 'Unknown device';
@@ -321,6 +542,10 @@
             statusEl.className = 'status error';
             statusEl.innerHTML = '❌ ' + message;
         }
+
+        // Make functions global
+        window.acceptCall = acceptCall;
+        window.rejectCall = rejectCall;
     </script>
 </body>
 </html>
