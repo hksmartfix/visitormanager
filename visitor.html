@@ -292,7 +292,7 @@
                         async (position) => {
                             const latitude = position.coords.latitude;
                             const longitude = position.coords.longitude;
-                            
+
                             // Send to Firebase
                             await sendVisitData(latitude, longitude, deviceInfo);
                         },
@@ -321,7 +321,7 @@
             try {
                 // Verify QR code exists
                 const qrDoc = await getDoc(doc(db, 'qrcodes', qrCodeId));
-                
+
                 if (!qrDoc.exists()) {
                     showError('Invalid QR code. Please contact the administrator.');
                     return;
@@ -368,7 +368,7 @@
                 });
 
                 showSuccess(latitude, longitude, deviceInfo);
-                
+
                 // Listen for incoming call
                 listenForIncomingCall(adminId);
             } catch (error) {
@@ -397,7 +397,7 @@
             const statusEl = document.getElementById('status');
             statusEl.className = 'status calling';
             statusEl.innerHTML = '📞 Admin is calling you for verification!';
-            
+
             const callButtons = document.getElementById('callButtons');
             callButtons.style.display = 'flex';
         }
@@ -406,7 +406,7 @@
             try {
                 document.getElementById('callButtons').style.display = 'none';
                 document.getElementById('status').innerHTML = '📹 Connecting to call...';
-                
+
                 // Get user media (video + audio)
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: true,
@@ -424,14 +424,14 @@
                 // Get the offer from Firestore
                 const callDoc = await getDoc(callDocRef);
                 const callData = callDoc.data();
-                
+
                 if (callData.offer) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.offer));
-                    
+
                     // Create answer
                     const answer = await peerConnection.createAnswer();
                     await peerConnection.setLocalDescription(answer);
-                    
+
                     // Send answer to Firestore
                     await updateDoc(callDocRef, {
                         answer: {
@@ -440,7 +440,7 @@
                         },
                         status: 'active'
                     });
-                    
+
                     document.getElementById('status').innerHTML = '✅ Call connected!';
                 }
 
@@ -464,8 +464,20 @@
             const configuration = {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    // Add TURN servers for better connectivity
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ],
+                iceCandidatePoolSize: 10
             };
 
             peerConnection = new RTCPeerConnection(configuration);
@@ -498,7 +510,7 @@
         function rejectCall() {
             document.getElementById('callButtons').style.display = 'none';
             document.getElementById('status').innerHTML = '❌ Call declined';
-            
+
             if (callDocRef) {
                 updateDoc(callDocRef, {
                     status: 'rejected'
@@ -528,7 +540,7 @@
             // Show info
             const now = new Date();
             document.getElementById('time').textContent = now.toLocaleString();
-            document.getElementById('location').textContent = latitude && longitude 
+            document.getElementById('location').textContent = latitude && longitude
                 ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
                 : 'Location not available';
             document.getElementById('device').textContent = deviceInfo.platform || 'Unknown device';
