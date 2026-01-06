@@ -221,24 +221,6 @@
             transition: all 0.3s;
         }
 
-        .call-btn.accept {
-            background: #4caf50;
-            color: white;
-        }
-
-        .call-btn.accept:hover {
-            background: #45a049;
-        }
-
-        .call-btn.reject {
-            background: #f44336;
-            color: white;
-        }
-
-        .call-btn.reject:hover {
-            background: #da190b;
-        }
-
         .call-btn.end {
             background: #ff5722;
             color: white;
@@ -628,22 +610,6 @@
             }
         }
 
-        function rejectCall() {
-            // Stop ringtone
-            const ringtone = document.getElementById('ringtone');
-            ringtone.pause();
-            ringtone.currentTime = 0;
-
-            document.getElementById('callButtons').style.display = 'none';
-            document.getElementById('status').innerHTML = '❌ Call declined';
-            document.getElementById('status').className = 'status error';
-
-            if (callDocRef) {
-                updateDoc(callDocRef, {
-                    status: 'rejected'
-                });
-            }
-        }
 
         function endCall() {
             if (localStream) {
@@ -692,9 +658,7 @@
             statusEl.innerHTML = '❌ ' + message;
         }
 
-        // Make functions global
-        window.acceptCall = acceptCall;
-        window.rejectCall = rejectCall;
+        // Make endCall global (auto-accept, so no accept/reject buttons needed)
         window.endCall = endCall;
     </script>
 </body>
