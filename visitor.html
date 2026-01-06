@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visitor Check-in</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+
+        .status.loading {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .info-box {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-icon {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            color: white;
+            font-size: 16px;
+        }
+
+        .info-text {
+            color: #555;
+            flex: 1;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .waiting {
+            margin-top: 30px;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📍</div>
+        <h1>Visitor Check-in</h1>
+        <p class="subtitle">Please wait while we verify your visit</p>
+
+        <div id="status" class="status loading">
+            <div class="spinner"></div>
+            Capturing your location...
+        </div>
+
+        <div id="info" class="info-box" style="display: none;">
+            <div class="info-row">
+                <div class="info-icon">⏰</div>
+                <div class="info-text" id="time"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-icon">📍</div>
+                <div class="info-text" id="location"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-icon">📱</div>
+                <div class="info-text" id="device"></div>
+            </div>
+        </div>
+
+        <p class="waiting" id="waiting" style="display: none;">
+            ⏳ Admin has been notified. Please wait for approval.
+        </p>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Firebase configuration - YOU NEED TO REPLACE THIS WITH YOUR CONFIG
+        const firebaseConfig = {
+           apiKey: "AIzaSyD2eR0zwESg983bIu6eXDDtIVZlL2HJk_4",
+  authDomain: "code-5b518.firebaseapp.com",
+  databaseURL: "https://code-5b518-default-rtdb.firebaseio.com",
+  projectId: "code-5b518",
+  storageBucket: "code-5b518.firebasestorage.app",
+  messagingSenderId: "1036542118548",
+  appId: "1:1036542118548:web:ebb10c5e9683fea34b8281",
+  measurementId: "G-JKJMR6BS2Q"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Get QR code ID from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const qrCodeId = urlParams.get('qr');
+
+        if (!qrCodeId) {
+            showError('Invalid QR code. Please scan again.');
+        } else {
+            captureAndSendLocation();
+        }
+
+        async function captureAndSendLocation() {
+            try {
+                // Get device info
+                const deviceInfo = {
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    screenResolution: `${window.screen.width}x${window.screen.height}`
+                };
+
+                // Request location permission
+                if ('geolocation' in navigator) {
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            const latitude = position.coords.latitude;
+                            const longitude = position.coords.longitude;
+
+                            // Send to Firebase
+                            await sendVisitData(latitude, longitude, deviceInfo);
+                        },
+                        (error) => {
+                            console.error('Location error:', error);
+                            // Send without location
+                            sendVisitData(null, null, deviceInfo);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 0
+                        }
+                    );
+                } else {
+                    // No geolocation support
+                    await sendVisitData(null, null, deviceInfo);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to process your visit. Please try again.');
+            }
+        }
+
+        async function sendVisitData(latitude, longitude, deviceInfo) {
+            try {
+                // Verify QR code exists
+                const qrDoc = await getDoc(doc(db, 'qrcodes', qrCodeId));
+
+                if (!qrDoc.exists()) {
+                    showError('Invalid QR code. Please contact the administrator.');
+                    return;
+                }
+
+                const qrData = qrDoc.data();
+                const adminId = qrData.adminId;
+
+                // Create visit record
+                const visitId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+                const visitData = {
+                    id: visitId,
+                    qrCodeId: qrCodeId,
+                    adminId: adminId,
+                    latitude: latitude,
+                    longitude: longitude,
+                    deviceInfo: JSON.stringify(deviceInfo),
+                    userAgent: navigator.userAgent,
+                    timestamp: new Date().toISOString(),
+                    status: 'pending',
+                    callStatus: null
+                };
+
+                // Save to Firestore
+                await addDoc(collection(db, 'guest_visits'), visitData);
+
+                // Update QR code visit count
+                const qrRef = doc(db, 'qrcodes', qrCodeId);
+                const currentCount = qrData.visitCount || 0;
+                await updateDoc(qrRef, {
+                    visitCount: currentCount + 1
+                });
+
+                // Send notification to admin
+                await addDoc(collection(db, 'notifications'), {
+                    adminId: adminId,
+                    qrCodeId: qrCodeId,
+                    visitId: visitId,
+                    type: 'visitor_arrived',
+                    title: 'New Visitor!',
+                    message: 'A visitor has scanned your QR code and is waiting at the location.',
+                    timestamp: new Date().toISOString(),
+                    read: false
+                });
+
+                showSuccess(latitude, longitude, deviceInfo);
+            } catch (error) {
+                console.error('Firebase error:', error);
+                showError('Failed to send your information. Please try again.');
+            }
+        }
+
+        function showSuccess(latitude, longitude, deviceInfo) {
+            const statusEl = document.getElementById('status');
+            const infoEl = document.getElementById('info');
+            const waitingEl = document.getElementById('waiting');
+
+            statusEl.className = 'status success';
+            statusEl.innerHTML = '✅ Check-in Successful!';
+
+            // Show info
+            const now = new Date();
+            document.getElementById('time').textContent = now.toLocaleString();
+            document.getElementById('location').textContent = latitude && longitude
+                ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+                : 'Location not available';
+            document.getElementById('device').textContent = deviceInfo.platform || 'Unknown device';
+
+            infoEl.style.display = 'block';
+            waitingEl.style.display = 'block';
+        }
+
+        function showError(message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = 'status error';
+            statusEl.innerHTML = '❌ ' + message;
+        }
+    </script>
+</body>
+</html>
+
